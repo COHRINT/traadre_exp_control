@@ -2,6 +2,8 @@
 
 import sys
 import rospy
+from traadre_msgs.msg import *
+from traadre_msgs.srv import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import QCoreApplication, Qt
 from PyQt5.QtGui import *
@@ -19,10 +21,13 @@ class ParameterWindow(QWidget):
 		self.initUI()
 
 	def initUI(self):
-		rospy.init_node('experiment')
+		rospy.init_node('Experiment')
 
 		self.frame1 = QFrame()
 		self.frame1.setStyleSheet("background-color: rgb(200, 255, 255)")
+		self.pub = rospy.Publisher('Experiment', part_id, queue_size=10, latch=True)
+		self.msg = part_id()
+
 
 		self.horiz_layout1 = QHBoxLayout()
 		self.horiz_layout2 = QHBoxLayout()
@@ -36,7 +41,6 @@ class ParameterWindow(QWidget):
 
 		self.font = QFont()
 		self.font.setBold(True)
-
 
 
 		self.setWindowTitle("Experiment UI")
@@ -61,13 +65,29 @@ class ParameterWindow(QWidget):
 		self.lbl_tbl.setText('Traverse List:')
 		self.lbl_tbl.setFont(self.font)
 
+
+		self.goal_titles, self.row = self.getGoals_client()
+
 		self.table = controlTable()
-		self.table = QTableWidget(5,5,self)
+		self.table = QTableWidget(len(goal_titles),5,self)
 
 		self.table.setHorizontalHeaderLabels(('Goal ID', 'Pos X', 'Pos Y','Theta','Fuel'))
 		self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 		self.table.setMaximumWidth(self.table.horizontalHeader().length()+30)
 		self.table.setMaximumHeight(self.table.verticalHeader().length()+25)
+
+
+		for i in range(0,self.table.rowCount()):
+			item = QTableWidgetItem(self.goal_titles[i])
+			itemx = QTableWidgetItem( '%1.2f' % self.row[i].x)
+			itemy = QTableWidgetItem( '%1.2f' % self.row[i].y)
+			item_theta = QTableWidgetItem( '%1.2f' % self.row[i].theta)
+
+			self.table.setItem(i, 0, item)
+			self.table.setItem(i, 1, itemx)
+			self.table.setItem(i, 2, itemy)
+			self.table.setItem(i, 3, item_theta)
+
 		self.horiz_layout2.addWidget(self.table)
 
 		self.go_btn = QPushButton('Go!',self)
@@ -93,10 +113,8 @@ class ParameterWindow(QWidget):
 
 	def submit_data(self):
 		self.msg.id = int(self.textbox.text())
-		self.hide()
-		while not rospy.is_shutdown():
-			self.pub.publish(self.msg)
-			self.r.sleep()
+		self.pub.publish(self.msg)
+
 
 	def closer(self):
 		self.close()
@@ -126,6 +144,7 @@ class ParameterWindow(QWidget):
 		self.trav_x.setText('Pos X')
 		self.trav_y.setText('Pos Y')
 		self.trav_theta.setText('Theta')
+
 
 
 		self.trav_goal_val.setText('0')
@@ -161,8 +180,24 @@ class ParameterWindow(QWidget):
 			self.horiz_layout4.addWidget(self.list2[j])
 			self.horiz_layout6.addWidget(self.list4[j])
 
-
-
+	def setCurrentGoal_client(self):
+		try:
+			goal = rospy.ServiceProxy('/policy_server/SetCurrentGoal', SetCurrentGoal)
+			response = goal()
+			#goal_pose = [goal.GetGoalList.pose.position.x, goal.GetGoalList.pose.position.y]
+			return response.POSE
+		except rospy.ServiceException, e:
+			print "Service call failed: %s"%e
+   
+	def getGoals_client(self):
+		try:
+			goal = rospy.ServiceProxy('/policy_server/GetGoalList', GetGoalList)
+			response = goal()
+			row = response.goals
+			return response.ids, row
+		except rospy.ServiceException, e:
+			print "Service call failed: %s"%e
+   
 	def buildWidgets(self):
 		self.vert_layout.addLayout(self.horiz_layout1)
 		self.vert_layout.addWidget(self.lbl_tbl)
