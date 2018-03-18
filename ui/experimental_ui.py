@@ -12,8 +12,9 @@ class controlTable(QTableWidget):
 	def __init__(self):
 		super(QTableWidget, self).__init__()
 
-	def itemClicked(self, ev):
-			QTableView.selectRow(self,row)
+
+	def clickEvent():
+		print('e')
 class ParameterWindow(QWidget):
 
 	def __init__(self):
@@ -22,6 +23,7 @@ class ParameterWindow(QWidget):
 
 	def initUI(self):
 		rospy.init_node('Experiment')
+
 
 		self.frame1 = QFrame()
 		self.frame1.setStyleSheet("background-color: rgb(200, 255, 255)")
@@ -68,30 +70,10 @@ class ParameterWindow(QWidget):
 
 		self.goal_titles, self.row = self.getGoals_client()
 
-		self.table = controlTable()
-		self.table = QTableWidget(len(goal_titles),5,self)
-
-		self.table.setHorizontalHeaderLabels(('Goal ID', 'Pos X', 'Pos Y','Theta','Fuel'))
-		self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-		self.table.setMaximumWidth(self.table.horizontalHeader().length()+30)
-		self.table.setMaximumHeight(self.table.verticalHeader().length()+25)
-
-
-		for i in range(0,self.table.rowCount()):
-			item = QTableWidgetItem(self.goal_titles[i])
-			itemx = QTableWidgetItem( '%1.2f' % self.row[i].x)
-			itemy = QTableWidgetItem( '%1.2f' % self.row[i].y)
-			item_theta = QTableWidgetItem( '%1.2f' % self.row[i].theta)
-
-			self.table.setItem(i, 0, item)
-			self.table.setItem(i, 1, itemx)
-			self.table.setItem(i, 2, itemy)
-			self.table.setItem(i, 3, item_theta)
-
-		self.horiz_layout2.addWidget(self.table)
+		self.buildTable()
 
 		self.go_btn = QPushButton('Go!',self)
-		self.go_btn.clicked.connect(self.submit_data)
+		self.go_btn.clicked.connect(self.choose_goal)
 		self.go_btn.setMaximumWidth(120)
 		self.horiz_layout2.addWidget(self.go_btn)
 
@@ -115,6 +97,8 @@ class ParameterWindow(QWidget):
 		self.msg.id = int(self.textbox.text())
 		self.pub.publish(self.msg)
 
+	def choose_goal(self):
+		print(self.setCurrentGoal_client('A')) #make modular
 
 	def closer(self):
 		self.close()
@@ -180,12 +164,35 @@ class ParameterWindow(QWidget):
 			self.horiz_layout4.addWidget(self.list2[j])
 			self.horiz_layout6.addWidget(self.list4[j])
 
-	def setCurrentGoal_client(self):
+
+	def buildTable(self):
+		self.table = controlTable()
+		self.table = QTableWidget(len(self.goal_titles),5,self)
+
+		self.table.setHorizontalHeaderLabels(('Goal ID', 'Pos X', 'Pos Y','Theta','Fuel'))
+		self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+		self.table.setMaximumWidth(self.table.horizontalHeader().length()+30)
+		self.table.setMaximumHeight(self.table.verticalHeader().length()+25)
+
+		for i in range(0,self.table.rowCount()):
+			self.item = QTableWidgetItem(self.goal_titles[i])
+			itemx = QTableWidgetItem( '%1.2f' % self.row[i].x)
+			itemy = QTableWidgetItem( '%1.2f' % self.row[i].y)
+			item_theta = QTableWidgetItem( '%1.2f' % self.row[i].theta)
+
+			self.table.setItem(i, 0, self.item)
+			self.table.setItem(i, 1, itemx)
+			self.table.setItem(i, 2, itemy)
+			self.table.setItem(i, 3, item_theta)
+
+		self.table.cellDoubleClicked.connect(self.clickEvent)
+		self.horiz_layout2.addWidget(self.table)
+	def setCurrentGoal_client(self,id):
 		try:
 			goal = rospy.ServiceProxy('/policy_server/SetCurrentGoal', SetCurrentGoal)
-			response = goal()
+			response = goal(id)
 			#goal_pose = [goal.GetGoalList.pose.position.x, goal.GetGoalList.pose.position.y]
-			return response.POSE
+			return response.goal
 		except rospy.ServiceException, e:
 			print "Service call failed: %s"%e
    
@@ -198,6 +205,8 @@ class ParameterWindow(QWidget):
 		except rospy.ServiceException, e:
 			print "Service call failed: %s"%e
    
+   	def clickEvent(self):
+   		self.table.setCurrentItem(self.item)
 	def buildWidgets(self):
 		self.vert_layout.addLayout(self.horiz_layout1)
 		self.vert_layout.addWidget(self.lbl_tbl)
