@@ -27,8 +27,8 @@ class ParameterWindow(QWidget):
 
 		self.frame1 = QFrame()
 		self.frame1.setStyleSheet("background-color: rgb(200, 255, 255)")
-		self.pub = rospy.Publisher('Experiment', part_id, queue_size=10, latch=True)
-		self.msg = part_id()
+		#self.pub = rospy.Publisher('Experiment', part_id, queue_size=10, latch=True)
+		#self.msg = part_id()
 
 
 		self.horiz_layout1 = QHBoxLayout()
@@ -189,7 +189,7 @@ class ParameterWindow(QWidget):
 		self.horiz_layout2.addWidget(self.table)
 	def setCurrentGoal_client(self,id):
 		try:
-			goal = rospy.ServiceProxy('/policy_server/SetCurrentGoal', SetCurrentGoal)
+			goal = rospy.ServiceProxy('policy_server/SetCurrentGoal', SetCurrentGoal)
 			response = goal(id)
 			#goal_pose = [goal.GetGoalList.pose.position.x, goal.GetGoalList.pose.position.y]
 			return response.goal
@@ -198,7 +198,7 @@ class ParameterWindow(QWidget):
    
 	def getGoals_client(self):
 		try:
-			goal = rospy.ServiceProxy('/policy_server/GetGoalList', GetGoalList)
+			goal = rospy.ServiceProxy('policy_server/GetGoalList', GetGoalList)
 			response = goal()
 			row = response.goals
 			return response.ids, row
