@@ -37,6 +37,7 @@ class ParameterWindow(QWidget):
 		self.horiz_layout4 = QHBoxLayout()
 		self.horiz_layout5 = QHBoxLayout()
 		self.horiz_layout6 = QHBoxLayout()
+		self.horiz_layout7 = QHBoxLayout()
 
 		self.vert_layout = QVBoxLayout()
 
@@ -90,6 +91,11 @@ class ParameterWindow(QWidget):
 		self.quit_btn.clicked.connect(self.closer)
 		self.quit_btn.setMaximumWidth(120)
 
+
+		self.mdp_btn = QRadioButton("MDP")
+		self.gc_btn = QRadioButton("GC")
+		self.horiz_layout7.addWidget(self.mdp_btn)
+		self.horiz_layout7.addWidget(self.gc_btn)
 		self.buildWidgets()
 		
 
@@ -98,7 +104,10 @@ class ParameterWindow(QWidget):
 		self.pub.publish(self.msg)
 
 	def choose_goal(self):
-		print(self.setCurrentGoal_client('A')) #make modular
+		self.setCurrentGoal_client(self.table.item(self.table.currentRow(),0).text()) 
+		self.trav_goal_val.setText(self.table.item(self.table.currentRow(),0).text())
+		self.trav_x_val.setText(str(self.setCurrentGoal_client(self.table.item(self.table.currentRow(),0).text()).x))
+		self.trav_y_val.setText(str(self.setCurrentGoal_client(self.table.item(self.table.currentRow(),0).text()).y))
 
 	def closer(self):
 		self.close()
@@ -220,6 +229,7 @@ class ParameterWindow(QWidget):
 		self.vert_layout.addLayout(self.horiz_layout6)
 		self.vert_layout.addWidget(self.cur_fuel_lbl)
 		self.vert_layout.addWidget(self.cur_fuel)
+		self.vert_layout.addLayout(self.horiz_layout7)
 
 		self.vert_layout.addWidget(self.quit_btn)
 
