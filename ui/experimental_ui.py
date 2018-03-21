@@ -4,6 +4,8 @@ import sys
 import rospy
 from traadre_msgs.msg import *
 from traadre_msgs.srv import *
+import tf
+from tf.transformations import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import QCoreApplication, Qt
 from PyQt5.QtGui import *
@@ -38,7 +40,8 @@ class ParameterWindow(QWidget):
 		self.horiz_layout5 = QHBoxLayout()
 		self.horiz_layout6 = QHBoxLayout()
 		self.horiz_layout7 = QHBoxLayout()
-
+		self.helperGroup = QGroupBox()
+		self.helperLayout = QHBoxLayout()
 		self.vert_layout = QVBoxLayout()
 
 
@@ -98,24 +101,29 @@ class ParameterWindow(QWidget):
 		self.gc_btn = QRadioButton("GC",self)
 		self.mdp_btn.clicked.connect(self.mdp_client)
 		self.gc_btn.clicked.connect(self.gc_client)
-		self.horiz_layout7.addWidget(self.mdp_btn)
-		self.horiz_layout7.addWidget(self.gc_btn)
+		self.helperLayout.addWidget(self.mdp_btn)
+		self.helperLayout.addWidget(self.gc_btn)
+
 		self.buildWidgets()
 		
 
 	def submit_data(self):
 		self.msg.id = int(self.textbox.text())
 		self.pub.publish(self.msg)
-		
+
 	def state_callback(self, data):
 		self._robotFuel = data.fuel
 		self.worldX = data.pose.position.x
 		self.worldY = data.pose.position.y
-
+		worldRoll, worldPitch, self.worldYaw = euler_from_quaternion([data.pose.orientation.w,
+																 data.pose.orientation.x,
+																 data.pose.orientation.y,
+																 data.pose.orientation.z],'sxyz')
+		print(self.worldYaw)
 		self.trav_x2_val.setText(str(self.worldX))
 		self.trav_y2_val.setText(str(self.worldY))
-
-		self.cur_fuel.setText(str(self._robotFuel))
+		self.trav_theta2_val.setText(str(self.worldYaw))
+		self.cur_fuel.setText(str(self._robotFuel/100))
 
 	def choose_goal(self):
 		self.setCurrentGoal_client(self.table.item(self.table.currentRow(),0).text()) 
@@ -126,17 +134,7 @@ class ParameterWindow(QWidget):
 	def closer(self):
 		self.close()
 
-	def mdp_client(self):
-		try:
-			mux = rospy.ServiceProxy('/topic_tools/MuxSelect', topic_tools/MuxSelect)
-			response = mux(MDP)
-			print(response)
-			return response
-		except rospy.ServiceException, e:
-			print "Service call failed: %s"%e
-   
-	def gc_client(self):
-		return
+
 	def buildLabels(self):
 		self.cur_trav_lbl = QLabel(self)
 		self.trav_goal = QLabel(self)
@@ -212,16 +210,33 @@ class ParameterWindow(QWidget):
 			itemy = QTableWidgetItem( '%1.2f' % self.row[i].y)
 			item_theta = QTableWidgetItem( '%1.2f' % self.row[i].theta)
 
+			self.item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+			itemx.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+			itemy.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+			item_theta.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
+
+
 			self.table.setItem(i, 0, self.item)
 			self.table.setItem(i, 1, itemx)
 			self.table.setItem(i, 2, itemy)
 			self.table.setItem(i, 3, item_theta)
 
-		self.table.cellDoubleClicked.connect(self.clickEvent)
 		self.horiz_layout2.addWidget(self.table)
+	def mdp_client(self):
+		try:
+			mux = rospy.ServiceProxy('/mux/select', topic_tools)
+			response = mux(MDP)
+			print(response)
+			return response
+		except rospy.ServiceException, e:
+			print "Service call failed: %s"%e
+   
+	def gc_client(self):
+		return
 	def setCurrentGoal_client(self,id):
 		try:
 			goal = rospy.ServiceProxy('/policy_server/SetCurrentGoal', SetCurrentGoal)
+
 			response = goal(id)
 			return response.goal
 		except rospy.ServiceException, e:
@@ -235,9 +250,7 @@ class ParameterWindow(QWidget):
 			return response.ids, row
 		except rospy.ServiceException, e:
 			print "Service call failed: %s"%e
-   
-	def clickEvent(self):
-		self.table.setCurrentItem(self.item)
+
 	def buildWidgets(self):
 		self.vert_layout.addLayout(self.horiz_layout1)
 		self.vert_layout.addWidget(self.lbl_tbl)
@@ -251,7 +264,12 @@ class ParameterWindow(QWidget):
 		self.vert_layout.addLayout(self.horiz_layout6)
 		self.vert_layout.addWidget(self.cur_fuel_lbl)
 		self.vert_layout.addWidget(self.cur_fuel)
-		self.vert_layout.addLayout(self.horiz_layout7)
+
+		self.helperGroup.setLayout(self.helperLayout)
+		self.helperGroup.setStyleSheet("QGroupBox { background-color: rgb(255, 255,\
+255); border:1px solid rgb(255, 170, 255); }")
+		self.vert_layout.addWidget(self.helperGroup)
+
 
 		self.vert_layout.addWidget(self.quit_btn)
 
