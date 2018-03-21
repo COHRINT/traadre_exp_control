@@ -84,6 +84,8 @@ class ParameterWindow(QWidget):
 		self.cur_fuel = QLabel(self)
 		self.cur_fuel_lbl.setText('Current Fuel:')
 		self.cur_fuel_lbl.setFont(self.font)
+
+		self.state_sub = rospy.Subscriber('state', RobotState, self.state_callback)
 		self.cur_fuel.setText('0')
 
 
@@ -92,8 +94,10 @@ class ParameterWindow(QWidget):
 		self.quit_btn.setMaximumWidth(120)
 
 
-		self.mdp_btn = QRadioButton("MDP")
-		self.gc_btn = QRadioButton("GC")
+		self.mdp_btn = QRadioButton("MDP",self)
+		self.gc_btn = QRadioButton("GC",self)
+		self.mdp_btn.clicked.connect(self.mdp_client)
+		self.gc_btn.clicked.connect(self.gc_client)
 		self.horiz_layout7.addWidget(self.mdp_btn)
 		self.horiz_layout7.addWidget(self.gc_btn)
 		self.buildWidgets()
@@ -102,6 +106,16 @@ class ParameterWindow(QWidget):
 	def submit_data(self):
 		self.msg.id = int(self.textbox.text())
 		self.pub.publish(self.msg)
+		
+	def state_callback(self, data):
+		self._robotFuel = data.fuel
+		self.worldX = data.pose.position.x
+		self.worldY = data.pose.position.y
+
+		self.trav_x2_val.setText(str(self.worldX))
+		self.trav_y2_val.setText(str(self.worldY))
+
+		self.cur_fuel.setText(str(self._robotFuel))
 
 	def choose_goal(self):
 		self.setCurrentGoal_client(self.table.item(self.table.currentRow(),0).text()) 
@@ -112,6 +126,17 @@ class ParameterWindow(QWidget):
 	def closer(self):
 		self.close()
 
+	def mdp_client(self):
+		try:
+			mux = rospy.ServiceProxy('/topic_tools/MuxSelect', topic_tools/MuxSelect)
+			response = mux(MDP)
+			print(response)
+			return response
+		except rospy.ServiceException, e:
+			print "Service call failed: %s"%e
+   
+	def gc_client(self):
+		return
 	def buildLabels(self):
 		self.cur_trav_lbl = QLabel(self)
 		self.trav_goal = QLabel(self)
@@ -136,14 +161,12 @@ class ParameterWindow(QWidget):
 		self.trav_goal.setText('Goal ID')
 		self.trav_x.setText('Pos X')
 		self.trav_y.setText('Pos Y')
-		self.trav_theta.setText('Theta')
-
 
 
 		self.trav_goal_val.setText('0')
 		self.trav_x_val.setText('0')
 		self.trav_y_val.setText('0')
-		self.trav_theta_val.setText('0')
+
 
 		self.trav_x2_val.setText('0')
 		self.trav_y2_val.setText('0')
@@ -154,7 +177,7 @@ class ParameterWindow(QWidget):
 		self.trav_y2.setText('Pos Y')
 		self.trav_theta2.setText('Theta')
 
-		self.list = [self.trav_goal,self.trav_x,self.trav_y,self.trav_theta]
+		self.list = [self.trav_goal,self.trav_x,self.trav_y]
 
 
 		self.cur_pos_lbl = QLabel(self)
@@ -162,7 +185,7 @@ class ParameterWindow(QWidget):
 		self.cur_pos_lbl.setFont(self.font)
 
 		self.list2 = [self.trav_x2,self.trav_y2,self.trav_theta2]
-		self.list3 = [self.trav_goal_val,self.trav_x_val,self.trav_y_val,self.trav_theta_val]
+		self.list3 = [self.trav_goal_val,self.trav_x_val,self.trav_y_val]
 		self.list4 = [self.trav_x2_val,self.trav_y2_val,self.trav_theta2_val]
 
 		for i in range(0,len(self.list)):
@@ -200,7 +223,6 @@ class ParameterWindow(QWidget):
 		try:
 			goal = rospy.ServiceProxy('/policy/policy_server/SetCurrentGoal', SetCurrentGoal)
 			response = goal(id)
-			#goal_pose = [goal.GetGoalList.pose.position.x, goal.GetGoalList.pose.position.y]
 			return response.goal
 		except rospy.ServiceException, e:
 			print "Service call failed: %s"%e
@@ -214,8 +236,8 @@ class ParameterWindow(QWidget):
 		except rospy.ServiceException, e:
 			print "Service call failed: %s"%e
    
-   	def clickEvent(self):
-   		self.table.setCurrentItem(self.item)
+	def clickEvent(self):
+		self.table.setCurrentItem(self.item)
 	def buildWidgets(self):
 		self.vert_layout.addLayout(self.horiz_layout1)
 		self.vert_layout.addWidget(self.lbl_tbl)
