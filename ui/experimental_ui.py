@@ -117,15 +117,17 @@ class ParameterWindow(QWidget):
 		self._robotFuel = data.fuel
 		self.worldX = data.pose.position.x
 		self.worldY = data.pose.position.y
-		worldRoll, worldPitch, self.worldYaw = euler_from_quaternion([data.pose.orientation.w,
-																 data.pose.orientation.x,
-																 data.pose.orientation.y,
-																 data.pose.orientation.z],'sxyz')
-		print(self.worldYaw)
+                #print 'Pose info:', data.pose.orientation
+                
+		worldRoll, worldPitch, self.worldYaw = euler_from_quaternion([data.pose.orientation.x,
+									      data.pose.orientation.y,
+									      data.pose.orientation.z,
+									      data.pose.orientation.w],'sxyz')
+		#print(self.worldYaw)
 		self.trav_x2_val.setText(str(self.worldX))
 		self.trav_y2_val.setText(str(self.worldY))
 		self.trav_theta2_val.setText(str(self.worldYaw))
-		self.cur_fuel.setText(str(self._robotFuel/100))
+		self.cur_fuel.setText('%1.2f %%' % (self._robotFuel*100))
 
 	def choose_goal(self):
 		self.setCurrentGoal_client(self.table.item(self.table.currentRow(),0).text()) 
