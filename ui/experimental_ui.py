@@ -4,6 +4,8 @@ import sys
 import rospy
 from traadre_msgs.msg import *
 from traadre_msgs.srv import *
+from topic_tools.srv import *
+
 import tf
 from tf.transformations import *
 from PyQt5.QtWidgets import *
@@ -29,8 +31,8 @@ class ParameterWindow(QWidget):
 
 		self.frame1 = QFrame()
 		self.frame1.setStyleSheet("background-color: rgb(200, 255, 255)")
-		self.pub = rospy.Publisher('Experiment', part_id, queue_size=10, latch=True)
-		self.msg = part_id()
+		#self.pub = rospy.Publisher('Experiment', part_id, queue_size=10, latch=True)
+		#self.msg = part_id()
 
 
 		self.horiz_layout1 = QHBoxLayout()
@@ -224,18 +226,30 @@ class ParameterWindow(QWidget):
 		self.horiz_layout2.addWidget(self.table)
 	def mdp_client(self):
 		try:
-			mux = rospy.ServiceProxy('/mux/select', topic_tools)
-			response = mux(MDP)
-			print(response)
-			return response
+			mux = rospy.ServiceProxy('/mux/select', MuxSelect)
+                        
+			req = MuxSelectRequest(topic='/policy/current_steer')
+			resp = mux(req)
+			return resp
+                
 		except rospy.ServiceException, e:
 			print "Service call failed: %s"%e
    
 	def gc_client(self):
+                try:
+			mux = rospy.ServiceProxy('/mux/select', MuxSelect)
+                        
+			req = MuxSelectRequest(topic='/ui/steer')
+			resp = mux(req)
+			return resp
+                
+		except rospy.ServiceException, e:
+			print "Service call failed: %s"%e
+   
 		return
 	def setCurrentGoal_client(self,id):
 		try:
-			goal = rospy.ServiceProxy('/policy_server/SetCurrentGoal', SetCurrentGoal)
+			goal = rospy.ServiceProxy('/policy/policy_server/SetCurrentGoal', SetCurrentGoal)
 
 			response = goal(id)
 			return response.goal
@@ -244,7 +258,7 @@ class ParameterWindow(QWidget):
    
 	def getGoals_client(self):
 		try:
-			goal = rospy.ServiceProxy('/policy_server/GetGoalList', GetGoalList)
+			goal = rospy.ServiceProxy('/policy/policy_server/GetGoalList', GetGoalList)
 			response = goal()
 			row = response.goals
 			return response.ids, row
