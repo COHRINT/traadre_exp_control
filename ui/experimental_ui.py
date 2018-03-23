@@ -1,6 +1,7 @@
 #!/usr/bin/env python2
 
 import sys
+import math
 import rospy
 from traadre_msgs.msg import *
 from traadre_msgs.srv import *
@@ -12,13 +13,8 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import QCoreApplication, Qt
 from PyQt5.QtGui import *
 
-class controlTable(QTableWidget):
-	def __init__(self):
-		super(QTableWidget, self).__init__()
 
 
-	def clickEvent():
-		print('e')
 class ParameterWindow(QWidget):
 
 	def __init__(self):
@@ -28,12 +24,11 @@ class ParameterWindow(QWidget):
 	def initUI(self):
 		rospy.init_node('Experiment')
 
-
-		self.frame1 = QFrame()
-		self.frame1.setStyleSheet("background-color: rgb(200, 255, 255)")
 		#self.pub = rospy.Publisher('Experiment', part_id, queue_size=10, latch=True)
-		#self.msg = part_id()
-
+		self.pub = rospy.Publisher('GoalComplete', GoalComplete, queue_size=10)
+		self.callout_Pub = rospy.Publisher('Callout', Callout, queue_size=10)
+		self.msg = GoalComplete()
+		self.callout_msg = Callout()
 
 		self.horiz_layout1 = QHBoxLayout()
 		self.horiz_layout2 = QHBoxLayout()
@@ -42,11 +37,17 @@ class ParameterWindow(QWidget):
 		self.horiz_layout5 = QHBoxLayout()
 		self.horiz_layout6 = QHBoxLayout()
 		self.horiz_layout7 = QHBoxLayout()
+
+		self.fuelGroup = QGroupBox()
+		self.fuelLayout = QHBoxLayout()
+
+
 		self.helperGroup = QGroupBox()
 		self.helperLayout = QHBoxLayout()
+
 		self.vert_layout = QVBoxLayout()
-
-
+		self.isGoal = False
+		self.missed = False
 		self.font = QFont()
 		self.font.setBold(True)
 
@@ -70,7 +71,7 @@ class ParameterWindow(QWidget):
 
 
 		self.lbl_tbl = QLabel(self)
-		self.lbl_tbl.setText('Traverse List:')
+		self.lbl_tbl.setText('Goal List:')
 		self.lbl_tbl.setFont(self.font)
 
 
@@ -89,6 +90,14 @@ class ParameterWindow(QWidget):
 		self.cur_fuel = QLabel(self)
 		self.cur_fuel_lbl.setText('Current Fuel:')
 		self.cur_fuel_lbl.setFont(self.font)
+		self.callout_btn = QPushButton('Callout Missed',self)
+		self.callout_btn.clicked.connect(self.callout_missed)
+		self.callout_btn.setMaximumWidth(120)
+		self.fuelLayout.addWidget(self.cur_fuel_lbl)
+		self.fuelLayout.addWidget(self.cur_fuel)
+		self.fuelLayout.addWidget(self.callout_btn)
+		self.fuelLayout.addStretch(0)
+
 
 		self.state_sub = rospy.Subscriber('state', RobotState, self.state_callback)
 		self.cur_fuel.setText('0')
@@ -107,7 +116,6 @@ class ParameterWindow(QWidget):
 		self.helperLayout.addWidget(self.gc_btn)
 
 		self.buildWidgets()
-		
 
 	def submit_data(self):
 		self.msg.id = int(self.textbox.text())
@@ -117,27 +125,47 @@ class ParameterWindow(QWidget):
 		self._robotFuel = data.fuel
 		self.worldX = data.pose.position.x
 		self.worldY = data.pose.position.y
-                #print 'Pose info:', data.pose.orientation
-                
+				
 		worldRoll, worldPitch, self.worldYaw = euler_from_quaternion([data.pose.orientation.x,
-									      data.pose.orientation.y,
-									      data.pose.orientation.z,
-									      data.pose.orientation.w],'sxyz')
-		#print(self.worldYaw)
-		self.trav_x2_val.setText(str(self.worldX))
-		self.trav_y2_val.setText(str(self.worldY))
-		self.trav_theta2_val.setText(str(self.worldYaw))
-		self.cur_fuel.setText('%1.2f %%' % (self._robotFuel*100))
+										  data.pose.orientation.y,
+										  data.pose.orientation.z,
+										  data.pose.orientation.w],'sxyz')
+
+		self.trav_x2_val.setText('%1.2f'  %self.worldX)
+		self.trav_y2_val.setText('%1.2f'  %self.worldY)
+		self.trav_theta2_val.setText('%1.2f'  % self.worldYaw)
+		self.cur_fuel.setText('%1.2f %%' % (self._robotFuel))
+
+		if(self.isGoal == True):
+			if math.sqrt(pow((self.goalx - self.worldX),2) + pow((self.goaly - self.worldY),2)) < 1:
+					self.msg.goal_id = self.table.item(self.table.currentRow(),0).text()
+					self.msg.fuel = self._robotFuel*100
+					self.msg.header.stamp = rospy.Time.now()
+					self.table.setCurrentCell(self.table.currentRow()+1,0) 
+					self.pub.publish(self.msg)
+					self.choose_goal()
+
 
 	def choose_goal(self):
 		self.setCurrentGoal_client(self.table.item(self.table.currentRow(),0).text()) 
 		self.trav_goal_val.setText(self.table.item(self.table.currentRow(),0).text())
-		self.trav_x_val.setText(str(self.setCurrentGoal_client(self.table.item(self.table.currentRow(),0).text()).x))
-		self.trav_y_val.setText(str(self.setCurrentGoal_client(self.table.item(self.table.currentRow(),0).text()).y))
 
+		self.goaly = self.setCurrentGoal_client(self.table.item(self.table.currentRow(),0).text()).y
+		self.goalx = self.setCurrentGoal_client(self.table.item(self.table.currentRow(),0).text()).x
+
+		self.trav_x_val.setText('%1.2f' % self.goalx)
+		self.trav_y_val.setText('%1.2f' % self.goaly)		
+		
+		self.isGoal = True
 	def closer(self):
 		self.close()
 
+	def callout_missed(self):
+		self.missed = True
+		self.callout_msg.fuel = (5* math.ceil(float(self._robotFuel)/5))
+		self.callout_msg.made = False
+		self.callout_msg.header.stamp = rospy.Time.now()
+		self.callout_Pub.publish(self.callout_msg)
 
 	def buildLabels(self):
 		self.cur_trav_lbl = QLabel(self)
@@ -158,7 +186,7 @@ class ParameterWindow(QWidget):
 		self.trav_theta2_val = QLabel(self)
 
 
-		self.cur_trav_lbl.setText('Current Traverse:')
+		self.cur_trav_lbl.setText('Current Goal:')
 		self.cur_trav_lbl.setFont(self.font)
 		self.trav_goal.setText('Goal ID')
 		self.trav_x.setText('Pos X')
@@ -200,7 +228,6 @@ class ParameterWindow(QWidget):
 
 
 	def buildTable(self):
-		self.table = controlTable()
 		self.table = QTableWidget(len(self.goal_titles),5,self)
 
 		self.table.setHorizontalHeaderLabels(('Goal ID', 'Pos X', 'Pos Y','Theta','Fuel'))
@@ -228,27 +255,25 @@ class ParameterWindow(QWidget):
 		self.horiz_layout2.addWidget(self.table)
 	def mdp_client(self):
 		try:
-			mux = rospy.ServiceProxy('/mux/select', MuxSelect)
-                        
+			mux = rospy.ServiceProxy('/mux/select', MuxSelect)               
 			req = MuxSelectRequest(topic='/policy/current_steer')
 			resp = mux(req)
 			return resp
-                
+				
 		except rospy.ServiceException, e:
 			print "Service call failed: %s"%e
    
 	def gc_client(self):
-                try:
-			mux = rospy.ServiceProxy('/mux/select', MuxSelect)
-                        
+		try:
+			mux = rospy.ServiceProxy('/mux/select', MuxSelect)            
 			req = MuxSelectRequest(topic='/ui/steer')
 			resp = mux(req)
 			return resp
-                
+				
 		except rospy.ServiceException, e:
 			print "Service call failed: %s"%e
    
-		return
+
 	def setCurrentGoal_client(self,id):
 		try:
 			goal = rospy.ServiceProxy('/policy/policy_server/SetCurrentGoal', SetCurrentGoal)
@@ -278,8 +303,11 @@ class ParameterWindow(QWidget):
 		self.vert_layout.addWidget(self.cur_pos_lbl)
 		self.vert_layout.addLayout(self.horiz_layout4)
 		self.vert_layout.addLayout(self.horiz_layout6)
-		self.vert_layout.addWidget(self.cur_fuel_lbl)
-		self.vert_layout.addWidget(self.cur_fuel)
+
+		self.fuelGroup.setLayout(self.fuelLayout)
+		self.fuelGroup.setStyleSheet("QGroupBox { background-color: rgb(255, 255,\
+255); border:5px solid rgb(255, 170, 255); }")
+		self.vert_layout.addWidget(self.fuelGroup)
 
 		self.helperGroup.setLayout(self.helperLayout)
 		self.helperGroup.setStyleSheet("QGroupBox { background-color: rgb(255, 255,\
@@ -296,10 +324,16 @@ class ParameterWindow(QWidget):
 
 		self.show()
 
-
-if __name__ == '__main__':
+		
+def main():
 	app = QApplication(sys.argv)
 	coretools_app = ParameterWindow()
 	sys.exit(app.exec_())
+
+if __name__ == '__main__':
+	try:
+		main()
+	except rospy.ROSInterruptException:
+		pass
 
 
