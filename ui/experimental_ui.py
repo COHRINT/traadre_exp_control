@@ -142,7 +142,11 @@ class ParameterWindow(QWidget):
 					self.msg.fuel = self._robotFuel
 					self.msg.header.stamp = rospy.Time.now()
 					self.pub.publish(self.msg)
-					self.table.setCurrentCell(self.table.currentRow()+1,0) 
+					if(self.table.currentRow()+1 < self.table.rowCount()):
+
+						self.table.setCurrentCell(self.table.currentRow()+1,0) 
+					else: 
+						self.table.setCurrentCell(0,0) 
 
 					self.choose_goal()
 
