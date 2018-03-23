@@ -139,10 +139,11 @@ class ParameterWindow(QWidget):
 		if(self.isGoal == True):
 			if math.sqrt(pow((self.goalx - self.worldX),2) + pow((self.goaly - self.worldY),2)) < 1:
 					self.msg.goal_id = self.table.item(self.table.currentRow(),0).text()
-					self.msg.fuel = self._robotFuel*100
+					self.msg.fuel = self._robotFuel
 					self.msg.header.stamp = rospy.Time.now()
-					self.table.setCurrentCell(self.table.currentRow()+1,0) 
 					self.pub.publish(self.msg)
+					self.table.setCurrentCell(self.table.currentRow()+1,0) 
+
 					self.choose_goal()
 
 
