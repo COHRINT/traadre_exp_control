@@ -137,7 +137,7 @@ class ParameterWindow(QWidget):
 		self.cur_fuel.setText('%1.2f %%' % (self._robotFuel))
 
 		if(self.isGoal == True):
-			if math.sqrt(pow((self.goalx - self.worldX),2) + pow((self.goaly - self.worldY),2)) < 1:
+			if math.sqrt(pow((self.goalx - self.worldX),2) + pow((self.goaly - self.worldY),2)) < 15:
 					self.msg.goal_id = self.table.item(self.table.currentRow(),0).text()
 					self.msg.fuel = self._robotFuel
 					self.msg.header.stamp = rospy.Time.now()
