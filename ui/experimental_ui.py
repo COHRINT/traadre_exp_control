@@ -1,8 +1,11 @@
 #!/usr/bin/env python2
 
 import sys
+import csv
 import math
 import rospy
+import signal
+
 from traadre_msgs.msg import *
 from traadre_msgs.srv import *
 from topic_tools.srv import *
@@ -13,7 +16,11 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtCore import QCoreApplication, Qt
 from PyQt5.QtGui import *
 
-
+def signal_handler(signal, frame):
+        print 'You pressed Ctrl+C!'
+        sys.exit(0)
+        
+signal.signal(signal.SIGINT, signal_handler)
 
 class ParameterWindow(QWidget):
 
@@ -25,8 +32,10 @@ class ParameterWindow(QWidget):
 		rospy.init_node('Experiment')
 
 		#self.pub = rospy.Publisher('Experiment', part_id, queue_size=10, latch=True)
-		self.pub = rospy.Publisher('GoalComplete', GoalComplete, queue_size=10)
-		self.callout_Pub = rospy.Publisher('Callout', Callout, queue_size=10)
+		self.pub = rospy.Publisher('goal_complete', GoalComplete, queue_size=10)
+		self.callout_Pub = rospy.Publisher('callout', Callout, queue_size=10)
+                self.teleportPub = rospy.Publisher('state_cmd', RobotState, queue_size=10)
+                
 		self.msg = GoalComplete()
 		self.callout_msg = Callout()
 
@@ -66,7 +75,7 @@ class ParameterWindow(QWidget):
 		
 		self.smt_btn = QPushButton('Submit',self)
 		self.smt_btn.clicked.connect(self.submit_data)
-		self.smt_btn.setMaximumWidth(120)
+		#self.smt_btn.setMaximumWidth(120)
 		self.horiz_layout1.addWidget(self.smt_btn)
 
 
@@ -77,12 +86,26 @@ class ParameterWindow(QWidget):
 
 		self.goal_titles, self.row = self.getGoals_client()
 
+                self.allGoals = zip(self.goal_titles, self.row) #Zip the tuples together so I get a list of tuples (instead of a tuple of lists)
+                self.allGoals = sorted(self.allGoals, key=lambda param: param[0]) #Sort the combined list by the goal ID
+                
 		self.buildTable()
 
-		self.go_btn = QPushButton('Go!',self)
+		self.go_btn = QPushButton('Begin',self)
 		self.go_btn.clicked.connect(self.choose_goal)
-		self.go_btn.setMaximumWidth(120)
-		self.horiz_layout2.addWidget(self.go_btn)
+		self.go_btn.setMinimumWidth(150)
+                beginPanel = QVBoxLayout()
+                beginPanel.addWidget(self.go_btn)
+                self.lblTeleport = QLabel('Teleport requested')
+                font = QFont()
+                font.setBold(True)
+                
+                self.lblTeleport.setFont(font)
+                self.lblTeleport.setStyleSheet('color: red;')
+                self.lblTeleport.setVisible(False)
+                beginPanel.addWidget(self.lblTeleport)
+                
+		self.horiz_layout2.addLayout(beginPanel)
 
 		self.buildLabels()
 
@@ -90,8 +113,8 @@ class ParameterWindow(QWidget):
 		self.cur_fuel = QLabel(self)
 		self.cur_fuel_lbl.setText('Current Fuel:')
 		self.cur_fuel_lbl.setFont(self.font)
-		self.callout_btn = QPushButton('Callout Missed',self)
-		self.callout_btn.clicked.connect(self.callout_missed)
+		self.callout_btn = QPushButton('Callout Made',self)
+		self.callout_btn.clicked.connect(self.callout_made)
 		self.callout_btn.setMaximumWidth(120)
 		self.fuelLayout.addWidget(self.cur_fuel_lbl)
 		self.fuelLayout.addWidget(self.cur_fuel)
@@ -116,12 +139,45 @@ class ParameterWindow(QWidget):
 		self.helperLayout.addWidget(self.gc_btn)
 
 		self.buildWidgets()
+                self.gc_btn.setChecked(True)
+                self.gc_btn.clicked.emit() #set the initial state to be ground control
 
+                '''
+                Mods to support a traverse list:
+                1. Read csv file containing initial pos and a pos / quat for each goal: Done
+                2. Zip the pos/quats to the goals spit out by the policy server: Done
+                3. Implement teleport publishing of a RobotState to /state_cmd : Done
+                3a. When a goal is reached by proximity, just add gas : Done
+                3b. When a goal is reached from teleport, set everything : Done
+                4. Implement teleport requested UI
+                5. 
+                '''
+
+                #Read the traverse lists
+                
+                csvFileName = sys.argv[1]
+                print 'Using traverses in file:', csvFileName
+                
+                csvFile = open(csvFileName, 'rb')
+                reader = csv.reader(csvFile, delimiter=',')
+                dests = []
+                for row in reader:
+                        dests.append(row)
+
+                #print 'Traverses:', dests
+                self.initPos = dests[0]
+                self.traverses = dests #take everything but the first one
+	        self._robotFuel = 0.0
+                self.lastStateMsg = None
+
+                
 	def submit_data(self):
 		self.msg.id = int(self.textbox.text())
 		self.pub.publish(self.msg)
 
 	def state_callback(self, data):
+                
+                self.lastStateMsg = data
 		self._robotFuel = data.fuel
 		self.worldX = data.pose.position.x
 		self.worldY = data.pose.position.y
@@ -148,10 +204,14 @@ class ParameterWindow(QWidget):
 					else: 
 						self.table.setCurrentCell(0,0) 
 
-					self.choose_goal()
+					self.choose_goal(teleport=False)
+
+                #May need a timeout here to prevent the system from cycling
+                if data.needTeleport:
+                        self.lblTeleport.setVisible(True)
 
 
-	def choose_goal(self):
+	def choose_goal(self, teleport = True):
 		self.setCurrentGoal_client(self.table.item(self.table.currentRow(),0).text()) 
 		self.trav_goal_val.setText(self.table.item(self.table.currentRow(),0).text())
 
@@ -162,13 +222,43 @@ class ParameterWindow(QWidget):
 		self.trav_y_val.setText('%1.2f' % self.goaly)		
 		
 		self.isGoal = True
+
+                #Send the robot to the designated initial position if needed
+                #The initial position is the currentRow index into the self.traverses list
+                msg = RobotState()
+                msg.header.stamp = rospy.Time.now()
+
+                #Parse the list we saved on startup
+                print 'Selected goal index:', self.table.currentRow()
+
+                initPos = self.traverses[self.table.currentRow()]
+                print 'Sending to ', initPos
+                if teleport:
+                        msg.pose.position.x = float(initPos[2])
+                        msg.pose.position.y = float(initPos[1])
+                        msg.pose.position.z = float(initPos[3])
+                        msg.pose.orientation.z = float(initPos[6])
+                        msg.pose.orientation.w = float(initPos[7])
+                else:
+                        #Don't teleport the user from where they were just reported
+                        if not self.lastStateMsg is None: 
+                                msg.pose = self.lastStateMsg.pose
+                                msg.pose.position.z += 0.1 #make sure we're above the surface so we don't
+                        #get ejected violently
+                        
+                        
+                msg.fuel = 1.0
+                msg.needTeleport = False
+                self.teleportPub.publish(msg)
+                self.lblTeleport.setVisible(False)
+                
 	def closer(self):
 		self.close()
 
-	def callout_missed(self):
-		self.missed = True
-		self.callout_msg.fuel = (5* math.ceil(float(self._robotFuel)/5))
-		self.callout_msg.made = False
+	def callout_made(self):
+		self.missed = False
+		self.callout_msg.fuel = float(self._robotFuel) #(5* math.ceil(float(self._robotFuel)/5))
+		self.callout_msg.made = True
 		self.callout_msg.header.stamp = rospy.Time.now()
 		self.callout_Pub.publish(self.callout_msg)
 
@@ -237,15 +327,15 @@ class ParameterWindow(QWidget):
 
 		self.table.setHorizontalHeaderLabels(('Goal ID', 'Pos X', 'Pos Y','Theta','Fuel'))
 		self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-		self.table.setMaximumWidth(self.table.horizontalHeader().length()+30)
-		self.table.setMaximumHeight(self.table.verticalHeader().length()+25)
+		#self.table.setMaximumWidth(self.table.horizontalHeader().length()+30)
+		#self.table.setMaximumHeight(self.table.verticalHeader().length()+25)
 
 		for i in range(0,self.table.rowCount()):
-			self.item = QTableWidgetItem(self.goal_titles[i])
-			itemx = QTableWidgetItem( '%1.2f' % self.row[i].x)
-			itemy = QTableWidgetItem( '%1.2f' % self.row[i].y)
-			item_theta = QTableWidgetItem( '%1.2f' % self.row[i].theta)
-
+			self.item = QTableWidgetItem(self.allGoals[i][0])
+			itemx = QTableWidgetItem( '%1.2f' % self.allGoals[i][1].x)
+			itemy = QTableWidgetItem( '%1.2f' % self.allGoals[i][1].y)
+			item_theta = QTableWidgetItem( '%1.2f' % self.allGoals[i][1].theta)
+                        item_fuel = QTableWidgetItem(str(100))
 			self.item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
 			itemx.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
 			itemy.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
@@ -256,6 +346,7 @@ class ParameterWindow(QWidget):
 			self.table.setItem(i, 1, itemx)
 			self.table.setItem(i, 2, itemy)
 			self.table.setItem(i, 3, item_theta)
+                        self.table.setItem(i, 4, item_fuel)
 
 		self.horiz_layout2.addWidget(self.table)
 	def mdp_client(self):
@@ -297,8 +388,10 @@ class ParameterWindow(QWidget):
 		except rospy.ServiceException, e:
 			print "Service call failed: %s"%e
 
+        
 	def buildWidgets(self):
 		self.vert_layout.addLayout(self.horiz_layout1)
+
 		self.vert_layout.addWidget(self.lbl_tbl)
 		self.vert_layout.addLayout(self.horiz_layout2)
 
@@ -328,11 +421,22 @@ class ParameterWindow(QWidget):
 		self.setLayout(self.vert_layout)
 
 		self.show()
-
+                
+class Application(QApplication):
+    def event(self, e):
+        return QApplication.event(self, e)
 		
 def main():
-	app = QApplication(sys.argv)
+        if len(sys.argv) < 2:
+                print 'Usage:', sys.argv[0], ' traverse.csv'
+                print 'Please provide a traverse csv file'
+                sys.exit(-1)
+                
+	app = Application(sys.argv)
 	coretools_app = ParameterWindow()
+        signal.signal(signal.SIGINT, lambda *a: app.quit())
+        app.startTimer(200)
+
 	sys.exit(app.exec_())
 
 if __name__ == '__main__':
