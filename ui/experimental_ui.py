@@ -35,6 +35,7 @@ class ParameterWindow(QWidget):
 		self.pub = rospy.Publisher('goal_complete', GoalComplete, queue_size=10)
 		self.callout_Pub = rospy.Publisher('callout', Callout, queue_size=10)
                 self.teleportPub = rospy.Publisher('state_cmd', RobotState, queue_size=10)
+                self.fakeSteerPub = rospy.Publisher('steer', Steering, queue_size=10)
                 
 		self.msg = GoalComplete()
 		self.callout_msg = Callout()
@@ -169,7 +170,7 @@ class ParameterWindow(QWidget):
                 self.traverses = dests #take everything but the first one
 	        self._robotFuel = 0.0
                 self.lastStateMsg = None
-
+                self.teleportNeeded = False
                 
 	def submit_data(self):
 		self.msg.id = int(self.textbox.text())
@@ -193,7 +194,7 @@ class ParameterWindow(QWidget):
 		self.cur_fuel.setText('%1.2f %%' % (self._robotFuel))
 
 		if(self.isGoal == True):
-			if math.sqrt(pow((self.goalx - self.worldX),2) + pow((self.goaly - self.worldY),2)) < 15:
+			if math.sqrt(pow((self.goalx - self.worldX),2) + pow((self.goaly - self.worldY),2)) < 20:
 					self.msg.goal_id = self.table.item(self.table.currentRow(),0).text()
 					self.msg.fuel = self._robotFuel
 					self.msg.header.stamp = rospy.Time.now()
@@ -203,15 +204,20 @@ class ParameterWindow(QWidget):
 						self.table.setCurrentCell(self.table.currentRow()+1,0) 
 					else: 
 						self.table.setCurrentCell(0,0) 
-
-					self.choose_goal(teleport=False)
+                                        self.teleportNeeded = False
+					self.choose_goal()
 
                 #May need a timeout here to prevent the system from cycling
                 if data.needTeleport:
                         self.lblTeleport.setVisible(True)
+                        self.teleportNeeded = True
+                else:
+                        self.lblTeleport.setVisible(False)
 
 
-	def choose_goal(self, teleport = True):
+	def choose_goal(self):
+                
+                teleport = self.teleportNeeded
 		self.setCurrentGoal_client(self.table.item(self.table.currentRow(),0).text()) 
 		self.trav_goal_val.setText(self.table.item(self.table.currentRow(),0).text())
 
@@ -232,25 +238,40 @@ class ParameterWindow(QWidget):
                 print 'Selected goal index:', self.table.currentRow()
 
                 initPos = self.traverses[self.table.currentRow()]
-                print 'Sending to ', initPos
-                if teleport:
-                        msg.pose.position.x = float(initPos[2])
-                        msg.pose.position.y = float(initPos[1])
-                        msg.pose.position.z = float(initPos[3])
-                        msg.pose.orientation.z = float(initPos[6])
-                        msg.pose.orientation.w = float(initPos[7])
+                print 'Sending to ', initPos, ' via teleport:', teleport
+                #if not teleport:
+                msg.pose.position.x = float(initPos[2])
+                msg.pose.position.y = float(initPos[1])
+                msg.pose.position.z = float(initPos[3])
+                msg.pose.orientation.z = float(initPos[6])
+                msg.pose.orientation.w = float(initPos[7])
+                '''
                 else:
                         #Don't teleport the user from where they were just reported
                         if not self.lastStateMsg is None: 
                                 msg.pose = self.lastStateMsg.pose
                                 msg.pose.position.z += 0.1 #make sure we're above the surface so we don't
                         #get ejected violently
+                '''   
                         
-                        
-                msg.fuel = 1.0
+                msg.fuel = 100.0
                 msg.needTeleport = False
                 self.teleportPub.publish(msg)
                 self.lblTeleport.setVisible(False)
+
+                steerMsg = Steering()
+                steerMsg.header.stamp = rospy.Time.now()
+                steerMsg.goal.x = self.goalx
+                steerMsg.goal.y = self.goaly
+                steerMsg.goal.theta = 0.0
+                worldRoll, worldPitch, worldYaw = euler_from_quaternion([initPos[4],
+									      initPos[5],
+									      initPos[6],
+                                                                              initPos[7]],'sxyz')
+                
+                steerMsg.steer = worldYaw
+                self.fakeSteerPub.publish(steerMsg)
+                                                                        
                 
 	def closer(self):
 		self.close()
