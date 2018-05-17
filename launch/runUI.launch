@@ -1,0 +1,22 @@
+<launch>
+  <!-- Launch a mini policy for debugging -->
+    <arg name="debug" value="false"/>
+    
+    <arg name="launch_prefix" if="$(arg debug)" default="gdb -ex run --args"/>
+    <arg name="launch_prefix" unless="$(arg debug)" default=""/>
+  
+   
+    <group ns="ui">
+    	    <node pkg="traadre_exp_control" type="experimental_ui.py" name="control_ui" output="screen">
+	    	  <remap from="dem" to="/policy/dem"/>
+		  <remap from="pose" to="/pose"/>
+		  <remap from="state" to="/state"/>
+		  <remap from="current_goal" to="/policy/current_goal"/>
+		  <remap from="hazmap" to="/policy/hazmap"/>
+		  <remap from="policy_server" to="/policy/policy_server"/>
+	    </node>
+
+    </group>
+
+    
+</launch>
