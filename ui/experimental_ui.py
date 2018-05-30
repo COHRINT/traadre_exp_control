@@ -13,7 +13,7 @@ from topic_tools.srv import *
 import tf
 from tf.transformations import *
 from PyQt5.QtWidgets import *
-from PyQt5.QtCore import QCoreApplication, Qt
+from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 
 def signal_handler(signal, frame):
@@ -23,6 +23,10 @@ def signal_handler(signal, frame):
 signal.signal(signal.SIGINT, signal_handler)
 
 class ParameterWindow(QWidget):
+	part_id_desired = pyqtSignal()
+	callouts_desired = pyqtSignal()
+	location_update = pyqtSignal(int, int, int, int)
+	goal_chosen = pyqtSignal(int,int)
 
 	def __init__(self):
 		super(QWidget,self).__init__()
@@ -31,16 +35,13 @@ class ParameterWindow(QWidget):
 	def initUI(self):
 		rospy.init_node('Experiment')
 
-		#self.pub = rospy.Publisher('Experiment', part_id, queue_size=10, latch=True)
+
 		self.pub = rospy.Publisher('goal_complete', GoalComplete, queue_size=10)
-		self.callout_Pub = rospy.Publisher('callout', Callout, queue_size=10)
                 self.teleportPub = rospy.Publisher('state_cmd', RobotState, queue_size=10)
                 self.fakeSteerPub = rospy.Publisher('steer', Steering, queue_size=10)
                 
 		self.msg = GoalComplete()
-		self.callout_msg = Callout()
 
-		self.horiz_layout1 = QHBoxLayout()
 		self.horiz_layout2 = QHBoxLayout()
 		self.horiz_layout3 = QHBoxLayout()
 		self.horiz_layout4 = QHBoxLayout()
@@ -65,20 +66,10 @@ class ParameterWindow(QWidget):
 		self.setWindowTitle("Experiment UI")
 		self.setGeometry(500,200,1000,600)
 
-		self.lbl_box = QLabel(self)
-		self.lbl_box.setText('Participant ID:')
-		self.lbl_box.setFont(self.font)
-		self.horiz_layout1.addWidget(self.lbl_box)
-
-		self.textbox = QLineEdit(self)
-		self.textbox.resize(280,40)
-		self.horiz_layout1.addWidget(self.textbox)
-		
-		self.smt_btn = QPushButton('Submit',self)
-		self.smt_btn.clicked.connect(self.submit_data)
-		#self.smt_btn.setMaximumWidth(120)
-		self.horiz_layout1.addWidget(self.smt_btn)
-
+		self.part_id_desired.connect(self.part_id_client)
+		self.location_update.connect(self.location_client)
+		self.goal_chosen.connect(self.goal_choose_client)
+		#self.part_id_desired.emit()
 
 		self.lbl_tbl = QLabel(self)
 		self.lbl_tbl.setText('Goal List:')
@@ -94,7 +85,7 @@ class ParameterWindow(QWidget):
 
 		self.go_btn = QPushButton('Begin',self)
 		self.go_btn.clicked.connect(self.choose_goal)
-		self.go_btn.setMinimumWidth(150)
+		self.go_btn.setMaximumWidth(125)
                 beginPanel = QVBoxLayout()
                 beginPanel.addWidget(self.go_btn)
                 self.lblTeleport = QLabel('Teleport requested')
@@ -114,14 +105,13 @@ class ParameterWindow(QWidget):
 		self.cur_fuel = QLabel(self)
 		self.cur_fuel_lbl.setText('Current Fuel:')
 		self.cur_fuel_lbl.setFont(self.font)
-		self.callout_btn = QPushButton('Callout Made',self)
-		self.callout_btn.clicked.connect(self.callout_made)
-		self.callout_btn.setMaximumWidth(120)
+
 		self.fuelLayout.addWidget(self.cur_fuel_lbl)
 		self.fuelLayout.addWidget(self.cur_fuel)
-		self.fuelLayout.addWidget(self.callout_btn)
 		self.fuelLayout.addStretch(0)
 
+		self.callouts_desired.connect(self.callouts_client)
+		#self.callouts_desired.emit()
 
 		self.state_sub = rospy.Subscriber('state', RobotState, self.state_callback)
 		self.cur_fuel.setText('0')
@@ -171,7 +161,47 @@ class ParameterWindow(QWidget):
 	        self._robotFuel = 0.0
                 self.lastStateMsg = None
                 self.teleportNeeded = False
-                
+
+	def location_client(self,x,y,yaw,fuel):
+		self.trav_x2_val.setText('%1.2f'  %x)
+		self.trav_y2_val.setText('%1.2f'  %y)
+		self.trav_theta2_val.setText('%1.2f'  %yaw)
+		self.cur_fuel.setText('%1.2f %%' %fuel)
+
+	def goal_choose_client(self, x, y):
+		self.trav_x_val.setText('%1.2f' %x)
+		self.trav_y_val.setText('%1.2f' %y)		
+		
+	def callouts_client(self):
+		self.callout_Pub = rospy.Publisher('callout', Callout, queue_size=10)
+		self.callout_msg = Callout()
+		self.callout_btn = QPushButton('Callout Made',self)
+		self.callout_btn.clicked.connect(self.callout_made)
+		self.callout_btn.setMaximumWidth(120)
+		self.fuelLayout.addWidget(self.callout_btn)
+
+	def part_id_client(self):
+    		self.pub = rospy.Publisher('Experiment', part_id, queue_size=10, latch=True)
+
+    		self.part_id_layout = QHBoxLayout()
+    		self.lbl_box = QLabel(self)
+		self.lbl_box.setText('Participant ID:')
+		self.lbl_box.setFont(self.font)
+		self.part_id_layout.addWidget(self.lbl_box)
+
+		self.textbox = QLineEdit(self)
+		self.textbox.resize(280,40)
+		self.part_id_layout.addWidget(self.textbox)
+		
+		self.smt_btn = QPushButton('Submit',self)
+		
+		self.smt_btn.clicked.connect(self.submit_data)
+		self.smt_btn.setMaximumWidth(120)
+		self.part_id_layout.addWidget(self.smt_btn)
+
+		self.vert_layout.addLayout(self.part_id_layout)
+
+
 	def submit_data(self):
 		self.msg.id = int(self.textbox.text())
 		self.pub.publish(self.msg)
@@ -188,19 +218,16 @@ class ParameterWindow(QWidget):
 										  data.pose.orientation.z,
 										  data.pose.orientation.w],'sxyz')
 
-		self.trav_x2_val.setText('%1.2f'  %self.worldX)
-		self.trav_y2_val.setText('%1.2f'  %self.worldY)
-		self.trav_theta2_val.setText('%1.2f'  % self.worldYaw)
-		self.cur_fuel.setText('%1.2f %%' % (self._robotFuel))
+
+		self.location_update.emit(self.worldX, self.worldY, self.worldYaw, self._robotFuel)
 
 		if(self.isGoal == True):
-			if math.sqrt(pow((self.goalx - self.worldX),2) + pow((self.goaly - self.worldY),2)) < 20:
+			if math.sqrt(pow((self.goalx - self.worldX),2) + pow((self.goaly - self.worldY),2)) < 20: #20 is the number of meters for goal transition
 					self.msg.goal_id = self.table.item(self.table.currentRow(),0).text()
 					self.msg.fuel = self._robotFuel
 					self.msg.header.stamp = rospy.Time.now()
 					self.pub.publish(self.msg)
 					if(self.table.currentRow()+1 < self.table.rowCount()):
-
 						self.table.setCurrentCell(self.table.currentRow()+1,0) 
 					else: 
 						self.table.setCurrentCell(0,0) 
@@ -224,9 +251,7 @@ class ParameterWindow(QWidget):
 		self.goaly = self.setCurrentGoal_client(self.table.item(self.table.currentRow(),0).text()).y
 		self.goalx = self.setCurrentGoal_client(self.table.item(self.table.currentRow(),0).text()).x
 
-		self.trav_x_val.setText('%1.2f' % self.goalx)
-		self.trav_y_val.setText('%1.2f' % self.goaly)		
-		
+		self.goal_chosen.emit(self.goalx, self.goaly)
 		self.isGoal = True
 
                 #Send the robot to the designated initial position if needed
@@ -301,6 +326,10 @@ class ParameterWindow(QWidget):
 		self.trav_y2_val = QLabel(self)
 		self.trav_theta2_val = QLabel(self)
 
+		self.list = [self.trav_goal,self.trav_x,self.trav_y]
+		self.list2 = [self.trav_x2,self.trav_y2,self.trav_theta2]
+		self.list3 = [self.trav_goal_val,self.trav_x_val,self.trav_y_val]
+		self.list4 = [self.trav_x2_val,self.trav_y2_val,self.trav_theta2_val]
 
 		self.cur_trav_lbl.setText('Current Goal:')
 		self.cur_trav_lbl.setFont(self.font)
@@ -308,39 +337,23 @@ class ParameterWindow(QWidget):
 		self.trav_x.setText('Pos X')
 		self.trav_y.setText('Pos Y')
 
-
-		self.trav_goal_val.setText('0')
-		self.trav_x_val.setText('0')
-		self.trav_y_val.setText('0')
-
-
-		self.trav_x2_val.setText('0')
-		self.trav_y2_val.setText('0')
-		self.trav_theta2_val.setText('0')
-
-
 		self.trav_x2.setText('Pos X')
 		self.trav_y2.setText('Pos Y')
 		self.trav_theta2.setText('Theta')
-
-		self.list = [self.trav_goal,self.trav_x,self.trav_y]
-
 
 		self.cur_pos_lbl = QLabel(self)
 		self.cur_pos_lbl.setText('Current Position:')
 		self.cur_pos_lbl.setFont(self.font)
 
-		self.list2 = [self.trav_x2,self.trav_y2,self.trav_theta2]
-		self.list3 = [self.trav_goal_val,self.trav_x_val,self.trav_y_val]
-		self.list4 = [self.trav_x2_val,self.trav_y2_val,self.trav_theta2_val]
-
 		for i in range(0,len(self.list)):
+			self.list3[i].setText('0')
+			self.list4[i].setText('0')
 			self.horiz_layout3.addWidget(self.list[i])
 			self.horiz_layout5.addWidget(self.list3[i])
+			self.horiz_layout4.addWidget(self.list2[i])
+			self.horiz_layout6.addWidget(self.list4[i])
 
-		for j in range(0,len(self.list2)):
-			self.horiz_layout4.addWidget(self.list2[j])
-			self.horiz_layout6.addWidget(self.list4[j])
+
 
 
 	def buildTable(self):
@@ -348,8 +361,8 @@ class ParameterWindow(QWidget):
 
 		self.table.setHorizontalHeaderLabels(('Goal ID', 'Pos X', 'Pos Y','Theta','Fuel'))
 		self.table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-		#self.table.setMaximumWidth(self.table.horizontalHeader().length()+30)
-		#self.table.setMaximumHeight(self.table.verticalHeader().length()+25)
+		self.table.setMaximumWidth(self.table.horizontalHeader().length()+30)
+		self.table.setMaximumHeight(self.table.verticalHeader().length()+25)
 
 		for i in range(0,self.table.rowCount()):
 			self.item = QTableWidgetItem(self.allGoals[i][0])
@@ -361,7 +374,7 @@ class ParameterWindow(QWidget):
 			itemx.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
 			itemy.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
 			item_theta.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
-
+			item_fuel.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEnabled)
 
 			self.table.setItem(i, 0, self.item)
 			self.table.setItem(i, 1, itemx)
@@ -411,8 +424,6 @@ class ParameterWindow(QWidget):
 
         
 	def buildWidgets(self):
-		self.vert_layout.addLayout(self.horiz_layout1)
-
 		self.vert_layout.addWidget(self.lbl_tbl)
 		self.vert_layout.addLayout(self.horiz_layout2)
 
@@ -424,21 +435,17 @@ class ParameterWindow(QWidget):
 		self.vert_layout.addLayout(self.horiz_layout6)
 
 		self.fuelGroup.setLayout(self.fuelLayout)
-		self.fuelGroup.setStyleSheet("QGroupBox { background-color: rgb(255, 255,\
-255); border:5px solid rgb(255, 170, 255); }")
+		self.fuelGroup.setStyleSheet("QGroupBox {background-color: white; border: 2px inset grey;}")
 		self.vert_layout.addWidget(self.fuelGroup)
 
 		self.helperGroup.setLayout(self.helperLayout)
-		self.helperGroup.setStyleSheet("QGroupBox { background-color: rgb(255, 255,\
-255); border:1px solid rgb(255, 170, 255); }")
+		self.helperGroup.setStyleSheet("QGroupBox {background-color: white; border: 2px inset grey;}")
 		self.vert_layout.addWidget(self.helperGroup)
 
-
-		self.vert_layout.addWidget(self.quit_btn)
-
-		self.vert_layout.addSpacing(10)
 		self.vert_layout.setContentsMargins(30,30,30,30)
 		self.vert_layout.addStretch()
+		self.vert_layout.addWidget(self.quit_btn)
+
 		self.setLayout(self.vert_layout)
 
 		self.show()
