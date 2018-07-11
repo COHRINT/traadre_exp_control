@@ -27,6 +27,7 @@ class ParameterWindow(QWidget):
 	callouts_desired = pyqtSignal()
 	location_update = pyqtSignal(int, int, int, int)
 	goal_chosen = pyqtSignal(int,int)
+	goal_reached = pyqtSignal()
 
 	def __init__(self):
 		super(QWidget,self).__init__()
@@ -34,7 +35,7 @@ class ParameterWindow(QWidget):
 
 	def initUI(self):
 		rospy.init_node('Experiment')
-
+ 		
 
 		self.pub = rospy.Publisher('goal_complete', GoalComplete, queue_size=10)
                 self.teleportPub = rospy.Publisher('state_cmd', RobotState, queue_size=10)
@@ -63,12 +64,14 @@ class ParameterWindow(QWidget):
 		self.font.setBold(True)
 
 
+
 		self.setWindowTitle("Experiment UI")
 		self.setGeometry(500,200,1000,600)
 
 		self.part_id_desired.connect(self.part_id_client)
 		self.location_update.connect(self.location_client)
 		self.goal_chosen.connect(self.goal_choose_client)
+		self.goal_reached.connect(self.goal_reached_client)
 		#self.part_id_desired.emit()
 
 		self.lbl_tbl = QLabel(self)
@@ -212,7 +215,6 @@ class ParameterWindow(QWidget):
 		self._robotFuel = data.fuel
 		self.worldX = data.pose.position.x
 		self.worldY = data.pose.position.y
-				
 		worldRoll, worldPitch, self.worldYaw = euler_from_quaternion([data.pose.orientation.x,
 										  data.pose.orientation.y,
 										  data.pose.orientation.z,
@@ -227,19 +229,23 @@ class ParameterWindow(QWidget):
 					self.msg.fuel = self._robotFuel
 					self.msg.header.stamp = rospy.Time.now()
 					self.pub.publish(self.msg)
-					if(self.table.currentRow()+1 < self.table.rowCount()):
-						self.table.setCurrentCell(self.table.currentRow()+1,0) 
-					else: 
-						self.table.setCurrentCell(0,0) 
-                                        self.teleportNeeded = False
+					self.goal_reached.emit()
 					self.choose_goal()
-
+					self.teleportNeeded = False
                 #May need a timeout here to prevent the system from cycling
                 if data.needTeleport:
                         self.lblTeleport.setVisible(True)
                         self.teleportNeeded = True
                 else:
                         self.lblTeleport.setVisible(False)
+
+	def goal_reached_client(self):
+		print("Goal Reached")
+		if(self.table.currentRow()+1 < self.table.rowCount()):
+			self.table.setCurrentCell(self.table.currentRow()+1,0) 
+		else: 
+			self.table.setCurrentCell(0,0) 
+            
 
 
 	def choose_goal(self):
@@ -262,7 +268,8 @@ class ParameterWindow(QWidget):
                 #Parse the list we saved on startup
                 print 'Selected goal index:', self.table.currentRow()
 
-                initPos = self.traverses[self.table.currentRow()]
+                initPos = self.traverses[self.table.currentRow()-1] #minus 1 works for all Version 2 pkls -> solves issue with starting on goal
+                #starpack.pkl requires -1 removed
                 print 'Sending to ', initPos, ' via teleport:', teleport
                 #if not teleport:
                 msg.pose.position.x = float(initPos[2])
@@ -279,7 +286,7 @@ class ParameterWindow(QWidget):
                         #get ejected violently
                 '''   
                         
-                msg.fuel = 100.0
+                msg.fuel = float(initPos[8])
                 msg.needTeleport = False
                 self.teleportPub.publish(msg)
                 self.lblTeleport.setVisible(False)
