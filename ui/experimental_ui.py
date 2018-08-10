@@ -224,7 +224,7 @@ class ParameterWindow(QWidget):
 		self.location_update.emit(self.worldX, self.worldY, self.worldYaw, self._robotFuel)
 
 		if(self.isGoal == True):
-			if math.sqrt(pow((self.goalx - self.worldX),2) + pow((self.goaly - self.worldY),2)) < 20: #20 is the number of meters for goal transition
+			if math.sqrt(pow((self.goalx - self.worldX),2) + pow((self.goaly - self.worldY),2)) < 25: #25 is the number of meters for goal transition
 					self.msg.goal_id = self.table.item(self.table.currentRow(),0).text()
 					self.msg.fuel = self._robotFuel
 					self.msg.header.stamp = rospy.Time.now()
@@ -268,7 +268,7 @@ class ParameterWindow(QWidget):
                 #Parse the list we saved on startup
                 print 'Selected goal index:', self.table.currentRow()
 
-                initPos = self.traverses[self.table.currentRow()-1] #minus 1 works for all Version 2 pkls -> solves issue with starting on goal
+                initPos = self.traverses[self.table.currentRow()] #minus 1 works for all Version 2 pkls -> solves issue with starting on goal
                 #starpack.pkl requires -1 removed
                 print 'Sending to ', initPos, ' via teleport:', teleport
                 #if not teleport:
@@ -286,7 +286,7 @@ class ParameterWindow(QWidget):
                         #get ejected violently
                 '''   
                         
-                msg.fuel = float(initPos[8])
+                msg.fuel = 100
                 msg.needTeleport = False
                 self.teleportPub.publish(msg)
                 self.lblTeleport.setVisible(False)
